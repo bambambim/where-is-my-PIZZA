@@ -9,49 +9,54 @@ import (
 	"fmt"
 	"net/http"
 	"time"
+
 	"where-is-my-PIZZA/internal/domain"
 	"where-is-my-PIZZA/internal/logger"
 )
 
-var (
-	ErrInvalidOrderType = errors.New("order type must be 'dine_in', 'takeout', or 'delivery'")
-	ErrMissingItems     = errors.New("order must contain between 1 and 20 items")
-	ErrInvalidItems     = errors.New("order items contain invalid data")
-)
-
-type OrderService interface {
-	CreateOrder(ctx context.Context, order domain.CreateOrderRequest) (domain.Order, error)
+type OrderCreator interface {
+	CreateOrder(ctx context.Context, req domain.CreateOrderRequest) (*domain.Order, error)
 }
 
 type Handler struct {
-	service OrderService
-	log     *logger.Logger
+	svc OrderCreator
+	log *logger.Logger
 }
 
-func NewHandler(service OrderService, logger *logger.Logger) *Handler {
-	return &Handler{service: service, log: logger}
+func NewHand(svc OrderCreator, log *logger.Logger) *Handler {
+	return &Handler{svc: svc, log: log}
 }
 
 func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
-	reqID := generateRequestID()
-	h.log.Debug("request_received", "Received create order request", reqID)
+	requestID := generateRequestID()
+	h.log.Debug("request_received", "Received create order request", requestID)
+
 	var req domain.CreateOrderRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		h.log.Error(err, "validation_failed", "Failed to decode request body", reqID)
+		h.log.Error(err, "validation_failed", "Failed to decode request body", requestID)
 		http.Error(w, "Invalid request body", http.StatusBadRequest)
 		return
 	}
-	ctx, cancel := context.WithTimeout(r.Context(), time.Second*10)
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	order, err := h.service.CreateOrder(ctx, req)
+	order, err := h.svc.CreateOrder(ctx, req)
 	if err != nil {
-		if errors.Is(err, ErrInvalidOrderType) || errors.Is(err, ErrMissingItems) {
-			h.log.Error(err, "validation_failed", "Order validation failed", reqID)
+		if errors.Is(err, ErrInvalidOrderType) ||
+			errors.Is(err, ErrMissingItems) ||
+			errors.Is(err, ErrMissingTableNumber) ||
+			errors.Is(err, ErrMissingDeliveryAddress) ||
+			errors.Is(err, ErrInvalidTableNumber) ||
+			errors.Is(err, ErrInvalidDeliveryAddress) ||
+			errors.Is(err, ErrTableNumberRange) ||
+			errors.Is(err, ErrDeliveryAddressLength) {
+			h.log.Error(err, "validation_failed", "Order validation failed", requestID)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		http.Error(w, "Order creation failed", http.StatusInternalServerError)
+		h.log.Error(err, "processing_failed", "Failed to create order", requestID)
+		http.Error(w, "Failed to process order", http.StatusInternalServerError)
 		return
 	}
 
@@ -60,12 +65,12 @@ func (h *Handler) CreateOrder(w http.ResponseWriter, r *http.Request) {
 		Status:      order.Status,
 		TotalAmount: order.TotalAmount,
 	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
 	if err := json.NewEncoder(w).Encode(resp); err != nil {
-		h.log.Error(err, "response_failed", "Failed to encode response")
+		h.log.Error(err, "response_failed", "Failed to encode response", requestID)
 	}
-
 }
 
 // generateRequestID creates a simple, unique ID for tracing without external dependencies.

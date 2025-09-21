@@ -3,8 +3,22 @@ package orderservice
 import (
 	"context"
 	"database/sql"
+	"errors"
+
 	"where-is-my-PIZZA/internal/domain"
 	"where-is-my-PIZZA/internal/logger"
+)
+
+var (
+	ErrInvalidOrderType       = errors.New("order type must be 'dine_in', 'takeout', or 'delivery'")
+	ErrMissingItems           = errors.New("order must contain between 1 and 20 items")
+	ErrInvalidItems           = errors.New("order items contain invalid data")
+	ErrMissingTableNumber     = errors.New("table_number is required for dine_in orders")
+	ErrMissingDeliveryAddress = errors.New("delivery_address is required for delivery orders")
+	ErrInvalidTableNumber     = errors.New("table_number must not be provided for non-dine_in orders")
+	ErrInvalidDeliveryAddress = errors.New("delivery_address must not be provided for non-delivery orders")
+	ErrTableNumberRange       = errors.New("table_number must be between 1 and 100")
+	ErrDeliveryAddressLength  = errors.New("delivery_address must be at least 10 characters long")
 )
 
 type Repository interface {
@@ -88,13 +102,52 @@ func (s *Service) CreateOrder(ctx context.Context, req domain.CreateOrderRequest
 }
 
 func (s *Service) validateRequest(req domain.CreateOrderRequest) error {
+	// Validate order type
 	if req.OrderType != "dine_in" && req.OrderType != "takeout" && req.OrderType != "delivery" {
 		return ErrInvalidOrderType
 	}
+
+	// Validate items
 	if len(req.Items) < 1 || len(req.Items) > 20 {
 		return ErrMissingItems
 	}
-	// Add more validation logic here as needed
+
+	// Conditional validation based on order type
+	switch req.OrderType {
+	case "dine_in":
+		// dine_in requires table_number and must NOT have delivery_address
+		if req.TableNumber == nil {
+			return ErrMissingTableNumber
+		}
+		// Validate table_number range (1-100)
+		if *req.TableNumber < 1 || *req.TableNumber > 100 {
+			return ErrTableNumberRange
+		}
+		if req.DeliveryAddress != nil {
+			return ErrInvalidDeliveryAddress
+		}
+	case "delivery":
+		// delivery requires delivery_address and must NOT have table_number
+		if req.DeliveryAddress == nil || *req.DeliveryAddress == "" {
+			return ErrMissingDeliveryAddress
+		}
+		// Validate delivery_address length (minimum 10 characters)
+		if len(*req.DeliveryAddress) < 10 {
+			return ErrDeliveryAddressLength
+		}
+		if req.TableNumber != nil {
+			return ErrInvalidTableNumber
+		}
+	case "takeout":
+		// takeout must NOT have table_number or delivery_address
+		if req.TableNumber != nil {
+			return ErrInvalidTableNumber
+		}
+		if req.DeliveryAddress != nil {
+			return ErrInvalidDeliveryAddress
+		}
+	}
+
 	return nil
 }
 

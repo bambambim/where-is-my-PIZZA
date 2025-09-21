@@ -1,0 +1,14 @@
+
+Database:
+  Host: localhost
+  Port: 5432
+  User: restaurant_user
+  Password: restaurant_pass
+  Database: restaurant_db
+  PoolMaxConns: 10
+
+RabbitMQ:
+  Host: localhost
+  Port: 5672
+  User: guest
+  Password: guest
