@@ -71,7 +71,7 @@ The system consists of the following components:
 
 1.  **Clone the repository:**
     ```sh
-    git clone [https://github.com/your-username/wheres-my-pizza.git](https://github.com/your-username/wheres-my-pizza.git)
+    git clone [https://github.com/your-username/wheres-my-pizza.git]
     cd wheres-my-pizza
     ```
 
